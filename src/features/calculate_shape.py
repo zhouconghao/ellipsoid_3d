@@ -1,5 +1,4 @@
 import numpy as np
-
 """
 Updated April 16, 2018
 Follow convention of Ken Osato: Use reduced quadropole moment to find axis ratio of ellipsoidal cluster
@@ -12,6 +11,10 @@ converge -- Boolean
 [a,b,c] -- normalized major, intermediate, minor axes lengths (only ratio matters in reduced tensor)
 [lx, ly, lz] -- direction of minor, intermediate, major in original (non-rotated) basis
 """
+
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 def quad_moment(ptcl_coord, centr, dens):
@@ -27,60 +30,63 @@ def quad_moment(ptcl_coord, centr, dens):
     ry = (ptcl_coord_y - centr_y) * dens
     rz = (ptcl_coord_z - centr_z) * dens
 
-    # print(rx)
-    print(np.mean(rx**2))
-    print(np.mean(ry**2))
-    print(np.mean(rz**2))
+    # logging.debug(rx)
+    logging.debug(np.mean(rx**2))
+    logging.debug(np.mean(ry**2))
+    logging.debug(np.mean(rz**2))
 
     # R_range = np.sqrt(rx**2. + ry**2. + rz**2.)
     # rmax = np.sqrt(np.max(r_mem_ptcl[:,3]))
-    # print "Number of particles before selection is ", len(rx)
+    # logging.debug "Number of particles before selection is ", len(rx)
 
     # Choose particles inside Rvir
     # ptcl_range = np.where(R_range < rvir)
     # rx = rx[ptcl_range]; ry = ry[ptcl_range]; rz = rz[ptcl_range]
 
     num_mem_ptcl = len(rx)
-    print("Number of particles inside virial radius is ", num_mem_ptcl)
+    logging.debug(
+        "Number of particles inside virial radius is {}".format(num_mem_ptcl))
 
     # Building quadrupole tensor.
     Rp = np.sqrt(rx**2.0 + ry**2.0 + rz**2.0)
-    # print(Rp)
+    # logging.debug(Rp)
     assert np.all(Rp > 0.0), "Rp is zero"
     r = np.array([rx, ry, rz])
-    # print(r[0])
+    # logging.debug(r[0])
     r_rdu = r / Rp
-    # print(r_rdu[0])
-    # print(len(Rp**2))
-    M_rdu = np.matmul(r_rdu, r_rdu.T)  # Initial quadrupole tensor before iteration
-    print(M_rdu)
+    # logging.debug(r_rdu[0])
+    # logging.debug(len(Rp**2))
+    M_rdu = np.matmul(r_rdu,
+                      r_rdu.T)  # Initial quadrupole tensor before iteration
+    logging.debug(M_rdu)
 
     # Finding eigvec, eigval
     M_eigval, M_eigvec = np.linalg.eig(M_rdu)
     sort_eigval = np.argsort(M_eigval)[::-1]  # from greater to smaller
-    a, b, c = np.sqrt(M_eigval[sort_eigval])  # a, b, c major, intermediate, minor
-    lx, ly, lz = M_eigvec.T[sort_eigval]  # lx, ly, lz major, intermediate, minor
-    print("a,b,c in the first iteration")
-    print(a, b, c)
+    a, b, c = np.sqrt(
+        M_eigval[sort_eigval])  # a, b, c major, intermediate, minor
+    lx, ly, lz = M_eigvec.T[
+        sort_eigval]  # lx, ly, lz major, intermediate, minor
+    logging.debug("a,b,c in the first iteration: {} {} {}".format(a, b, c))
     lx = np.array(lx)
     ly = np.array(ly)
     lz = np.array(lz)
-    print("lx in the first iteration", lx)
-    print("ly in the first iteration", ly)
-    print("lz in the first iteration", lz)
+    logging.debug("lx in the first iteration {}".format(lx))
+    logging.debug("ly in the first iteration {}".format(ly))
+    logging.debug("lz in the first iteration {}".format(lz))
 
     # Sanity check
     """
-    print "r_rdu", r_rdu
+    logging.debug "r_rdu", r_rdu
     check_eig = M_rdu.dot(lx) - num_mem_ptcl*c**2.*lx
-    print "M_rdu.dot(lx) ", np.dot(np.array(M_rdu), lx)
-    print "check_eig ", check_eig
-    print "lx is ", lx
-    print "M_eigvec.T[sort_eigval], ", M_eigvec.T[sort_eigval]
-    print "M_eigvec[:,0] ", M_eigvec[:,0]
-    print "M_eigvec[sort_eigval] ", M_eigvec[sort_eigval]
-    print "M_eigvec", M_eigvec
-    print "sort_eigval ", sort_eigval
+    logging.debug "M_rdu.dot(lx) ", np.dot(np.array(M_rdu), lx)
+    logging.debug "check_eig ", check_eig
+    logging.debug "lx is ", lx
+    logging.debug "M_eigvec.T[sort_eigval], ", M_eigvec.T[sort_eigval]
+    logging.debug "M_eigvec[:,0] ", M_eigvec[:,0]
+    logging.debug "M_eigvec[sort_eigval] ", M_eigvec[sort_eigval]
+    logging.debug "M_eigvec", M_eigvec
+    logging.debug "sort_eigval ", sort_eigval
     """
 
     # Initial conditions
@@ -97,7 +103,7 @@ def quad_moment(ptcl_coord, centr, dens):
     while (not converge) & (conv_iter < 1000):
         # Change of basis
         P_axis = np.array([lx, ly, lz])
-        print("P_axis:", P_axis)
+        logging.debug("P_axis: {}".format(P_axis))
         P_tot = np.matmul(P_axis, P_tot)
         r_proj = np.matmul(P_axis, r)
         rx = np.array(r_proj[0])
@@ -108,7 +114,7 @@ def quad_moment(ptcl_coord, centr, dens):
         q_cur = c / a
         s_cur = b / a  # Osato conventaion
 
-        Rp = np.sqrt((rx) ** 2.0 + (ry / s_cur) ** 2.0 + (rz / q_cur) ** 2.0)
+        Rp = np.sqrt((rx)**2.0 + (ry / s_cur)**2.0 + (rz / q_cur)**2.0)
 
         r = np.array([rx, ry, rz])
 
@@ -128,20 +134,21 @@ def quad_moment(ptcl_coord, centr, dens):
         conv_s = np.abs(1 - s_cur / s_prev)
         conv_q = np.abs(1 - q_cur / q_prev)
         converge = (conv_s < conv_err) & (conv_q < conv_err)
-        # print "Conv_s, conv_q ", conv_s, conv_q
-        # print "Number of particles ", len(rx)
-        print("a, b, c ", a, b, c)
-        # print "q, s are ", q_cur, s_cur
-        # print "lx", lx
-        # print 'converge is ', converge
-        # print '\n'
+        # logging.debug "Conv_s, conv_q ", conv_s, conv_q
+        # logging.debug "Number of particles ", len(rx)
+        logging.debug("a,b,c in the {} iteration: {} {} {}".format(
+            conv_iter, a, b, c))
+        # logging.debug "q, s are ", q_cur, s_cur
+        # logging.debug "lx", lx
+        # logging.debug 'converge is ', converge
+        # logging.debug '\n'
         conv_iter += 1
         q_prev = q_cur
         s_prev = s_cur
         q_tot *= q_cur
         s_tot *= s_cur
 
-        print("q_cur, s_cur", q_cur, s_cur)
+        logging.debug("q_cur, s_cur: {} {}".format(q_cur, s_cur))
 
     # find lx, ly, lz in original basis
     P_inv = np.linalg.inv(P_tot)
@@ -150,5 +157,7 @@ def quad_moment(ptcl_coord, centr, dens):
     lx_orig = l_orig_basis[0]
     ly_orig = l_orig_basis[1]
     lz_orig = l_orig_basis[2]
+
+    assert converge
 
     return converge, [a, b, c], [lx_orig, ly_orig, lz_orig]
