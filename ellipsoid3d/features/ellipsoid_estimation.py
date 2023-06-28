@@ -18,6 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def reduced_iterative_tensor_shell(particle_coordinates, center_coordinate, ellip_radius_min, ellipradius_max):
+
     
     center_x, center_y, center_z = center_coordinate
     particle_coordinates_x = particle_coordinates[:, 0]
@@ -28,42 +29,63 @@ def reduced_iterative_tensor_shell(particle_coordinates, center_coordinate, elli
     ry = (particle_coordinates_y - center_y)
     rz = (particle_coordinates_z - center_z)
 
+
     convergence = False
     iter = 0
-    maxiter = 1000
-    convergence_tolerance = 1e-6
+    maxiter = 10000
+    convergence_tolerance = 1e-3
+    total_projection_matrix = np.identity(3)
     projection_matrix = np.identity(3)
     s = 1.0
     q = 1.0
+    test = 1.0
     
     while (not convergence) & (iter < maxiter):
         # use reduced moment of inertia tensor to find axis ratio within shell
         rp = np.sqrt(rx**2 + (ry/s)**2 + (rz/q)**2)
         mask = (rp > ellip_radius_min) & (rp < ellipradius_max)
+        print("Number of particles in shell: ", np.sum(mask))
+        assert np.sum(mask) > 0, "No particles in shell"
 
         rx_in_ellipsoid, ry_in_ellipsoid, rz_in_ellipsoid = rx[mask], ry[mask], rz[mask]
+        rp = rp[mask]
+
+        npoints = np.sum(mask)
+
         assert np.all(rp > 0.0), "Rp is zero"
         r = np.array([rx_in_ellipsoid, ry_in_ellipsoid, rz_in_ellipsoid])
         r = np.matmul(projection_matrix, r)
+        
+        test *= np.mean(rp)
+
+
         r_reduced = r / rp
-        M_reduced = np.matmul(r_reduced, r_reduced.T)
+        M_reduced = np.matmul(r_reduced, r_reduced.T) 
 
         M_eigenvalues, M_eigenvectors = np.linalg.eig(M_reduced)
+        # M_eigenvalues /= (0.2 * npoints)
         sort_eigenvalues = np.argsort(M_eigenvalues)[::-1]
         a,b,c = np.sqrt(M_eigenvalues[sort_eigenvalues])
         lx,ly,lz = M_eigenvectors.T[sort_eigenvalues]
         lx, ly, lz = np.array(lx), np.array(ly), np.array(lz)
         
-        projection_matrix *= np.array([lx, ly, lz])
 
+        # print(projection_matrix)
+        print(np.array([lx, ly, lz]))
+        
+        projection_matrix = np.array([lx, ly, lz])
+        total_projection_matrix = np.matmul(projection_matrix, total_projection_matrix)
 
         q_new, s_new = b/a, c/a
 
-        convergence = (np.abs(q_new - q) < convergence_tolerance) & (np.abs(s_new - s) < convergence_tolerance)
-        iter += 1
-        
-        
+        convergence = np.logical_and((np.abs(1 - q_new/q) < convergence_tolerance), (np.abs(1 - s_new/s) < convergence_tolerance))
 
+        q, s = q_new, s_new
+
+        iter += 1
+
+        print("projection matrix", projection_matrix)
+    
     inverse_projection = np.linalg.inv(projection_matrix)
     l_new_basis = np.array([lx, ly, lz])
     l_orig_basis = np.matmul(inverse_projection, l_new_basis)
