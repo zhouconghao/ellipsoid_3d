@@ -1,4 +1,5 @@
 import numpy as np
+
 """
 Updated April 16, 2018
 Follow convention of Ken Osato: Use reduced quadropole moment to find axis ratio of ellipsoidal cluster
@@ -17,90 +18,95 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 
-def reduced_iterative_tensor_shell(particle_coordinates, center_coordinate, ellip_radius_min, ellipradius_max):
-
-    
+def reduced_iterative_tensor_shell(
+    particle_coordinates, center_coordinate, ellip_radius_min, ellipradius_max
+):
     center_x, center_y, center_z = center_coordinate
     particle_coordinates_x = particle_coordinates[:, 0]
     particle_coordinates_y = particle_coordinates[:, 1]
     particle_coordinates_z = particle_coordinates[:, 2]
-    
-    rx = (particle_coordinates_x - center_x)
-    ry = (particle_coordinates_y - center_y)
-    rz = (particle_coordinates_z - center_z)
 
+    rx = particle_coordinates_x - center_x
+    ry = particle_coordinates_y - center_y
+    rz = particle_coordinates_z - center_z
 
     convergence = False
     iter = 0
     maxiter = 10000
-    convergence_tolerance = 1e-3
+    convergence_tolerance = 1e-6
     total_projection_matrix = np.identity(3)
     projection_matrix = np.identity(3)
     s = 1.0
     q = 1.0
-    test = 1.0
-    
+    r = np.array([rx, ry, rz])
+
     while (not convergence) & (iter < maxiter):
         # use reduced moment of inertia tensor to find axis ratio within shell
-        rp = np.sqrt(rx**2 + (ry/s)**2 + (rz/q)**2)
-        mask = (rp > ellip_radius_min) & (rp < ellipradius_max)
+        
+        r = np.matmul(projection_matrix, r)
+        print("projection matrix")
+        print(projection_matrix)
+        print("deteminant of projection matrix", np.linalg.det(projection_matrix))
+        rx, ry, rz = r[0, :], r[1, :], r[2, :]
+
+        print("q,s", q, s)
+        rp = np.sqrt(rx**2 + (ry / q) ** 2 + (rz / s) ** 2)
+        print("print mean rp is", rp.mean())
+
+        print("print max rp is", rp.max())
+
+        mask = (rp >= ellip_radius_min) & (rp <= ellipradius_max)
         print("Number of particles in shell: ", np.sum(mask))
         assert np.sum(mask) > 0, "No particles in shell"
 
-        rx_in_ellipsoid, ry_in_ellipsoid, rz_in_ellipsoid = rx[mask], ry[mask], rz[mask]
+        r_in_mask = np.array([rx[mask], ry[mask], rz[mask]])
         rp = rp[mask]
 
-        npoints = np.sum(mask)
-
         assert np.all(rp > 0.0), "Rp is zero"
-        r = np.array([rx_in_ellipsoid, ry_in_ellipsoid, rz_in_ellipsoid])
-        r = np.matmul(projection_matrix, r)
-        
-        test *= np.mean(rp)
 
-
-        r_reduced = r / rp
-        M_reduced = np.matmul(r_reduced, r_reduced.T) 
+        r_reduced = r_in_mask / rp
+        print("mean r reduced", np.mean(r_reduced))
+        M_reduced = np.matmul(r_reduced, r_reduced.T)
 
         M_eigenvalues, M_eigenvectors = np.linalg.eig(M_reduced)
         # M_eigenvalues /= (0.2 * npoints)
         sort_eigenvalues = np.argsort(M_eigenvalues)[::-1]
-        a,b,c = np.sqrt(M_eigenvalues[sort_eigenvalues])
-        lx,ly,lz = M_eigenvectors.T[sort_eigenvalues]
+        a, b, c = np.sqrt(M_eigenvalues[sort_eigenvalues])
+        lx, ly, lz = M_eigenvectors.T[sort_eigenvalues]
         lx, ly, lz = np.array(lx), np.array(ly), np.array(lz)
-        
 
         # print(projection_matrix)
-        print(np.array([lx, ly, lz]))
-        
+        # print(np.array([lx, ly, lz]))
+
         projection_matrix = np.array([lx, ly, lz])
         total_projection_matrix = np.matmul(projection_matrix, total_projection_matrix)
 
-        q_new, s_new = b/a, c/a
+        q_new, s_new = b / a, c / a
 
-        convergence = np.logical_and((np.abs(1 - q_new/q) < convergence_tolerance), (np.abs(1 - s_new/s) < convergence_tolerance))
+        convergence = np.logical_and(
+            (np.abs(1 - q_new / q) < convergence_tolerance),
+            (np.abs(1 - s_new / s) < convergence_tolerance),
+        )
 
         q, s = q_new, s_new
 
         iter += 1
 
-        print("projection matrix", projection_matrix)
-    
     inverse_projection = np.linalg.inv(projection_matrix)
     l_new_basis = np.array([lx, ly, lz])
     l_orig_basis = np.matmul(inverse_projection, l_new_basis)
     lx_orig = l_orig_basis[0]
     ly_orig = l_orig_basis[1]
     lz_orig = l_orig_basis[2]
-    
+
     assert convergence, "Did not converge"
 
-    return convergence, [a, b, c], [lx_orig, ly_orig, lz_orig]
+    print("final q, s", q, s)
 
+    return [a, b, c], [lx_orig, ly_orig, lz_orig], mask
 
 
 def reduced_iterative_tensor(ptcl_coord, centr, dens):
-
     centr_x = centr[0]
     centr_y = centr[1]
     centr_z = centr[2]
@@ -127,8 +133,7 @@ def reduced_iterative_tensor(ptcl_coord, centr, dens):
     # rx = rx[ptcl_range]; ry = ry[ptcl_range]; rz = rz[ptcl_range]
 
     num_mem_ptcl = len(rx)
-    logging.debug(
-        "Number of particles inside virial radius is {}".format(num_mem_ptcl))
+    logging.debug("Number of particles inside virial radius is {}".format(num_mem_ptcl))
 
     # Building quadrupole tensor.
     Rp = np.sqrt(rx**2.0 + ry**2.0 + rz**2.0)
@@ -139,17 +144,14 @@ def reduced_iterative_tensor(ptcl_coord, centr, dens):
     r_rdu = r / Rp
     # logging.debug(r_rdu[0])
     # logging.debug(len(Rp**2))
-    M_rdu = np.matmul(r_rdu,
-                      r_rdu.T)  # Initial quadrupole tensor before iteration
+    M_rdu = np.matmul(r_rdu, r_rdu.T)  # Initial quadrupole tensor before iteration
     logging.debug(M_rdu)
 
     # Finding eigvec, eigval
     M_eigval, M_eigvec = np.linalg.eig(M_rdu)
     sort_eigval = np.argsort(M_eigval)[::-1]  # from greater to smaller
-    a, b, c = np.sqrt(
-        M_eigval[sort_eigval])  # a, b, c major, intermediate, minor
-    lx, ly, lz = M_eigvec.T[
-        sort_eigval]  # lx, ly, lz major, intermediate, minor
+    a, b, c = np.sqrt(M_eigval[sort_eigval])  # a, b, c major, intermediate, minor
+    lx, ly, lz = M_eigvec.T[sort_eigval]  # lx, ly, lz major, intermediate, minor
     logging.debug("a,b,c in the first iteration: {} {} {}".format(a, b, c))
     lx = np.array(lx)
     ly = np.array(ly)
@@ -197,7 +199,7 @@ def reduced_iterative_tensor(ptcl_coord, centr, dens):
         q_cur = c / a
         s_cur = b / a  # Osato conventaion
 
-        Rp = np.sqrt((rx)**2.0 + (ry / s_cur)**2.0 + (rz / q_cur)**2.0)
+        Rp = np.sqrt((rx) ** 2.0 + (ry / s_cur) ** 2.0 + (rz / q_cur) ** 2.0)
 
         r = np.array([rx, ry, rz])
 
@@ -219,8 +221,7 @@ def reduced_iterative_tensor(ptcl_coord, centr, dens):
         converge = (conv_s < conv_err) & (conv_q < conv_err)
         # logging.debug "Conv_s, conv_q ", conv_s, conv_q
         # logging.debug "Number of particles ", len(rx)
-        logging.debug("a,b,c in the {} iteration: {} {} {}".format(
-            conv_iter, a, b, c))
+        logging.debug("a,b,c in the {} iteration: {} {} {}".format(conv_iter, a, b, c))
         # logging.debug "q, s are ", q_cur, s_cur
         # logging.debug "lx", lx
         # logging.debug 'converge is ', converge
